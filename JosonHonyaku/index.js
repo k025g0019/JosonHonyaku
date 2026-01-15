@@ -6,6 +6,12 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "5mb" }));
 
+const TRANSLATE_ENDPOINTS = [
+    "https://translate.argosopentech.com/translate",
+    "https://trans.zillyhuhn.com/translate",
+    "https://lt.psf.lt/translate"
+];
+
 function collectStrings(obj, path = [], out = []) {
     if (typeof obj === "string") out.push({ path, value: obj });
     else if (Array.isArray(obj))
@@ -23,58 +29,58 @@ function setByPath(obj, path, value) {
     cur[path[path.length - 1]] = value;
 }
 
-app.post("/translate", async (req, res) => {
-    try {
-        console.log("Translate request received");
-
-        const { json, targetLang } = req.body;
-        if (!json || !targetLang) {
-            return res.status(400).json({ error: "invalid request body" });
-        }
-
-        const items = collectStrings(json);
-        const cloned = structuredClone(json);
-
-        for (const item of items) {
-            const r = await fetch("https://translate.argosopentech.com/translate", {
+async function translateText(text, targetLang) {
+    for (const url of TRANSLATE_ENDPOINTS) {
+        try {
+            const r = await fetch(url, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    q: item.value,
+                    q: text,
                     source: "auto",
                     target: targetLang.toLowerCase(),
                     format: "text"
                 })
             });
 
-            const text = await r.text();
-            console.log("LibreTranslate raw:", text);
+            const body = await r.text();
+            if (!r.ok) continue;
 
-            if (!r.ok) {
-                throw new Error(`LibreTranslate error ${r.status}: ${text}`);
-            }
+            const data = JSON.parse(body);
+            if (data.translatedText) return data.translatedText;
+        } catch {
+            // 次のミラーへ
+        }
+    }
+    throw new Error("All translation endpoints failed");
+}
 
-            let data;
-            try {
-                data = JSON.parse(text);
-            } catch (e) {
-                throw new Error("JSON parse failed: " + text);
-            }
+app.post("/translate", async (req, res) => {
+    try {
+        const { json, targetLang } = req.body;
+        if (!json || !targetLang) {
+            return res.status(400).json({ error: "invalid request" });
+        }
 
-            if (!data.translatedText) {
-                throw new Error("No translatedText field");
-            }
+        const items = collectStrings(json);
+        const cloned = structuredClone(json);
 
-            setByPath(cloned, item.path, data.translatedText);
+        for (const item of items) {
+            const translated = await translateText(item.value, targetLang);
+            setByPath(cloned, item.path, translated);
         }
 
         res.json({ translated: cloned });
-
     } catch (e) {
         console.error("TRANSLATE ERROR:", e);
         res.status(500).json({ error: String(e.message || e) });
     }
 });
 
+app.get("/", (_, res) => {
+    res.send("JSON翻訳サーバー稼働中");
+});
 
-app.listen(3000, () => console.log("Server running"));
+app.listen(3000, () => {
+    console.log("Server running on port 3000");
+});
