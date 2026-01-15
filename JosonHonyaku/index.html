@@ -1,0 +1,54 @@
+﻿<!doctype html>
+<html lang="ja">
+<head>
+    <meta charset="utf-8">
+    <title>JSON翻訳ツール</title>
+</head>
+<body>
+    <h2>JSON翻訳（無料）</h2>
+
+    <input type="file" id="file" accept=".json"><br><br>
+
+    <select id="lang">
+        <option value="JA">日本語</option>
+        <option value="EN">英語</option>
+    </select>
+
+    <button id="run">翻訳</button>
+
+<pre id="out"></pre>
+
+    <script>
+let jsonData = null;
+
+// JSON読み込み
+document.getElementById("file").onchange = async e => {
+  jsonData = JSON.parse(await e.target.files[0].text());
+};
+
+// 翻訳実行
+document.getElementById("run").onclick = async () => {
+  if (!jsonData) {
+    alert("JSONファイルを選んでください");
+    return;
+  }
+
+  const res = await fetch(
+    "https://あなたのRenderURL.onrender.com/translate",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        json: jsonData,
+        targetLang: document.getElementById("lang").value
+      })
+    }
+  );
+
+  const result = await res.json();
+  document.getElementById("out").textContent =
+    JSON.stringify(result.translated, null, 2);
+};
+    </script>
+</body>
+</html>
